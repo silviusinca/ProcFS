@@ -11,26 +11,71 @@
 #include <stdlib.h>
 #include <semaphore.h>
 #include <string.h>
+#include <stdlib.h>
+#include <dirent.h>
+#include <ctype.h>
 
-#define NO_PROCESSES 100
+struct processInfo
+{
+    char **processes;
+    size_t size;
+};
+
+struct processInfo get_processes()
+{
+    size_t count = 0;
+    struct dirent *pDirent;
+    DIR *procDir = opendir("/proc/");
+
+    if (procDir == NULL)
+    {
+        printf("Cannot open directory /proc/\n");
+        return;
+    }
+    while ((pDirent = readdir(procDir)) != NULL)
+    {
+        if (isdigit(pDirent->d_name[0]))
+            count++;
+    }
+    size_t i = 0;
+    closedir(procDir);
+    procDir = opendir("/proc/");
+    struct processInfo result;
+    result.size = count;
+    result.processes = (char **)malloc(count * sizeof(char *));
+
+    while ((pDirent = readdir(procDir)) != NULL)
+    {
+        if (isdigit(pDirent->d_name[0]))
+            result.processes[i++] = pDirent->d_name;
+    }
+    closedir(procDir);
+    return result;
+}
 
 int main()
 {
-    char *nume[3] = {"test0", "test1", "test2"};
-    printf("Me %d Parent %d\n", getpid(), getppid());
-    for (int i = 0; i < 3; i++)
+    char aux[12];
+    while (1)
     {
+        mkdir("procFS", S_IRWXU);
+        struct processInfo test = get_processes();
+        for (int i = 0; i < test.size; i++)
+        {
+            sprintf(aux, "procFS/%s", test.processes[i]);
+            mkdir(aux, S_IRWXU);
+        }
         pid_t pid = fork();
         if (pid < 0)
             return errno;
         else if (pid == 0)
         {
-            mkdir(nume[i], S_IRWXU);
-            exit(1);
+            sleep(1);
+            char *argv[] = {"/bin/rm", "-rf", "procFS", NULL};
+            execve("/bin/rm", argv, NULL);
         }
+        else
+            wait(NULL);
     }
-    for (int i = 0; i < 3; i++)
-        wait(NULL);
-    printf("Hai sa vedem ");
-    exit(0);
+    return 0;
 }
