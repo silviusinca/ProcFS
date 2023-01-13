@@ -1,23 +1,13 @@
-#include <aio.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <stdio.h>
-#include <pthread.h>
 #include <stdlib.h>
-#include <semaphore.h>
 #include <string.h>
-#include <stdlib.h>
 #include <dirent.h>
-#include <ctype.h>
 
 struct processInfo
 {
-    char **processes;
+    char **process;
     size_t size;
 };
 
@@ -42,12 +32,12 @@ struct processInfo get_processes()
     procDir = opendir("/proc/");
     struct processInfo result;
     result.size = count;
-    result.processes = (char **)malloc(count * sizeof(char *));
+    result.process = (char **)malloc(count * sizeof(char *));
 
     while ((pDirent = readdir(procDir)) != NULL)
     {
         if (isdigit(pDirent->d_name[0]))
-            result.processes[i++] = pDirent->d_name;
+            result.process[i++] = pDirent->d_name;
     }
     closedir(procDir);
     return result;
@@ -55,22 +45,53 @@ struct processInfo get_processes()
 
 int main()
 {
-    char aux[12];
     while (1)
     {
         mkdir("procFS", S_IRWXU);
-        struct processInfo test = get_processes();
-        for (int i = 0; i < test.size; i++)
+        struct processInfo processes = get_processes();
+        for (int i = 0; i < processes.size; i++)
         {
-            sprintf(aux, "procFS/%s", test.processes[i]);
+            char aux[25], statsFile[30], procFile[25], ch;
+            sprintf(procFile, "/proc/%s/status", processes.process[i]);
+            sprintf(aux, "procFS/%s", processes.process[i]);
             mkdir(aux, S_IRWXU);
+            sprintf(statsFile, "%s/stats", aux);
+
+            int statsFD = open(statsFile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP);
+            if (statsFD == NULL)
+            {
+                printf("Cannot open stats from process %s", processes.process[i]);
+                return errno;
+            }
+
+            // dup2(statsFD, STDOUT_FILENO);
+            // close(statsFD);
+            // if (pid == 0)
+            // {
+            //     char *argv[] = {"/bin/ps", "-Flww", "-p", test.processes[i], NULL};
+            //     execve("/bin/ps", argv, NULL);
+            // }
+            // else
+            //     wait(NULL);
+
+            pid_t pid = fork();
+            if (pid < 0)
+                return errno;
+            else if (pid == 0)
+            {
+                char *argv[] = {"/bin/cp", procFile, statsFile, NULL};
+                execve("/bin/cp", argv, NULL);
+            }
+            else
+                wait(NULL);
         }
+
         pid_t pid = fork();
         if (pid < 0)
             return errno;
         else if (pid == 0)
         {
-            sleep(1);
+            sleep(3);
             char *argv[] = {"/bin/rm", "-rf", "procFS", NULL};
             execve("/bin/rm", argv, NULL);
         }
